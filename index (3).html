@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Control Telecomandă Dispozitiv</title>
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --danger: #ef4444;
+            --bg: #0f172a;
+            --surface: #1e293b;
+            --text: #f8fafc;
+            --border: #334155;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 500px;
+            background: var(--surface);
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border);
+            text-align: center;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+            text-align: left;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: #94a3b8;
+            text-transform: uppercase;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 14px 16px;
+            background: var(--bg);
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            font-size: 1.1rem;
+            outline: none;
+        }
+
+        input[type="text"]:focus {
+            border-color: var(--primary);
+        }
+
+        .actions {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        button {
+            width: 100%;
+            padding: 14px 20px;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        #startBtn {
+            background: var(--primary);
+        }
+
+        #stopBtn {
+            background: var(--danger);
+            display: none; /* Ascuns la început */
+        }
+
+        .status-panel {
+            margin-top: 25px;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 500;
+        }
+
+        .controlled-mode {
+            background-color: #7f1d1d !important; /* Ecranul devine roșu când e controlat */
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="form-group">
+            <label for="roomCode">Codul Unic de Conectare:</label>
+            <input type="text" id="roomCode">
+        </div>
+
+        <div class="actions">
+            <button id="startBtn">Pornește Sincronizare / Control</button>
+            <button id="stopBtn">Oprește Controlul (STOP)</button>
+        </div>
+
+        <div id="statusPanel" class="status-panel">
+            Dispozitiv în așteptare...
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script>
+        const SERVER_URL = "http://localhost:3000"; // Pune IP-ul PC-ului tău aici la teste
+        let socket;
+
+        try {
+            socket = io(SERVER_URL);
+            initSocketEvents();
+        } catch (e) {
+            console.log("Serverul Socket.io nu este pornit.");
+        }
+
+        const roomCodeInput = document.getElementById('roomCode');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const statusPanel = document.getElementById('statusPanel');
+
+        let isControlling = false;
+
+        // APĂSARE BUTON START
+        startBtn.addEventListener('click', () => {
+            const currentCode = roomCodeInput.value.trim();
+            
+            if (socket && currentCode) {
+                // Intră în cameră
+                socket.emit('set-custom-code', currentCode);
+                
+                // Trimite comanda de preluare control către celălalt dispozitiv
+                socket.emit('request-control', { action: 'START_CONTROL' });
+                
+                isControlling = true;
+                startBtn.style.display = 'none';
+                stopBtn.style.display = 'block';
+                statusPanel.innerText = "Controlezi camera: " + currentCode;
+            } else {
+                alert("Introdu un cod mai întâi!");
+            }
+        });
+
+        // APĂSARE BUTON STOP
+        stopBtn.addEventListener('click', () => {
+            if (socket) {
+                // Trimite comanda de eliberare control
+                socket.emit('request-control', { action: 'STOP_CONTROL' });
+                
+                isControlling = false;
+                startBtn.style.display = 'block';
+                stopBtn.style.display = 'none';
+                statusPanel.innerText = "Control oprit.";
+            }
+        });
+
+        function initSocketEvents() {
+            // Ascultăm comenzile de control primite de la celălalt dispozitiv
+            socket.on('trigger-action', (data) => {
+                
+                if (data.action === 'START_CONTROL') {
+                    // Celălalt dispozitiv a preluat controlul asupra acestei pagini
+                    statusPanel.innerText = "ACEST DISPOZITIV ESTE CONTROLAT DE LA DISTANȚĂ!";
+                    document.body.classList.add('controlled-mode');
+                    
+                    // AICI POȚI PROGRAMA CE SĂ FACĂ TABLETA CÂND E CONTROLATĂ:
+                    // Exemplu: Să deschidă automat un link ales de tine
+                    // window.location.href = "https://github.com"; 
+                } 
+                
+                else if (data.action === 'STOP_CONTROL') {
+                    // S-a apăsat STOP pe celălalt dispozitiv
+                    statusPanel.innerText = "Controlul a fost oprit de la distanță.";
+                    document.body.classList.remove('controlled-mode');
+                }
+            });
+        }
+    </script>
+</body>
+</html>
