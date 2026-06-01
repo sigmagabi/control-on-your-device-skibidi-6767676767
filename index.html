@@ -3,15 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Control Telecomandă Dispozitiv</title>
+    <title>Sistem Control Gadget</title>
     <style>
         :root {
-            --primary: #4f46e5;
-            --danger: #ef4444;
             --bg: #0f172a;
             --surface: #1e293b;
             --text: #f8fafc;
+            --primary: #2563eb;
+            --danger: #dc2626;
             --border: #334155;
+            --success: #10b981;
         }
 
         * {
@@ -24,36 +25,28 @@
         body {
             background-color: var(--bg);
             color: var(--text);
-            padding: 20px;
             display: flex;
+            flex-direction: column;
             justify-content: center;
             align-items: center;
             min-height: 100vh;
+            padding: 20px;
+            transition: background-color 0.3s ease;
         }
 
         .container {
             width: 100%;
-            max-width: 500px;
+            max-width: 400px;
             background: var(--surface);
             padding: 30px;
             border-radius: 16px;
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
             border: 1px solid var(--border);
             text-align: center;
         }
 
         .form-group {
             margin-bottom: 25px;
-            text-align: left;
-        }
-
-        label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 600;
-            font-size: 0.9rem;
-            color: #94a3b8;
-            text-transform: uppercase;
         }
 
         input[type="text"] {
@@ -63,56 +56,49 @@
             border: 2px solid var(--border);
             border-radius: 8px;
             color: var(--text);
-            font-size: 1.1rem;
+            font-size: 1.2rem;
+            text-align: center;
             outline: none;
+            letter-spacing: 2px;
         }
 
         input[type="text"]:focus {
             border-color: var(--primary);
         }
 
-        .actions {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-
         button {
             width: 100%;
-            padding: 14px 20px;
+            padding: 16px 20px;
             color: white;
             border: none;
             border-radius: 8px;
-            font-size: 1rem;
+            font-size: 1.2rem;
             font-weight: bold;
             cursor: pointer;
-            transition: opacity 0.2s;
+            transition: transform 0.1s ease, background-color 0.2s ease;
         }
 
-        button:hover {
-            opacity: 0.9;
+        button:active {
+            transform: scale(0.98);
         }
 
-        #startBtn {
-            background: var(--primary);
+        .btn-control {
+            background-color: var(--primary);
         }
 
-        #stopBtn {
-            background: var(--danger);
-            display: none; /* Ascuns la început */
+        .btn-stop {
+            background-color: var(--danger);
         }
 
-        .status-panel {
-            margin-top: 25px;
-            padding: 15px;
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 8px;
-            font-size: 1rem;
-            font-weight: 500;
+        .status-msg {
+            margin-top: 20px;
+            font-size: 0.95rem;
+            color: #94a3b8;
         }
 
+        /* Stilul când ecranul este preluat sub control total */
         .controlled-mode {
-            background-color: #7f1d1d !important; /* Ecranul devine roșu când e controlat */
+            background-color: #450a0a !important;
         }
     </style>
 </head>
@@ -120,90 +106,105 @@
 
     <div class="container">
         <div class="form-group">
-            <label for="roomCode">Codul Unic de Conectare:</label>
-            <input type="text" id="roomCode">
+            <input type="text" id="secretCode" placeholder="COD SECRET">
         </div>
 
-        <div class="actions">
-            <button id="startBtn">Pornește Sincronizare / Control</button>
-            <button id="stopBtn">Oprește Controlul (STOP)</button>
-        </div>
+        <button id="mainBtn" class="btn-control">CONTROL</button>
 
-        <div id="statusPanel" class="status-panel">
-            Dispozitiv în așteptare...
-        </div>
+        <div id="status" class="status-msg">Dispozitiv pregătit pentru conectare</div>
     </div>
 
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script>
-        const SERVER_URL = "http://localhost:3000"; // Pune IP-ul PC-ului tău aici la teste
+        // ATENȚIE: Schimbă 'localhost' cu IP-ul calculatorului tău pentru testul pe telefon/tabletă
+        // Exemplu: const SERVER_URL = "http://192.168.1.5:3000";
+        const SERVER_URL = "http://localhost:3000";
+        
         let socket;
+        const secretCodeInput = document.getElementById('secretCode');
+        const mainBtn = document.getElementById('mainBtn');
+        const statusDiv = document.getElementById('status');
+
+        let amControlul = false;
 
         try {
             socket = io(SERVER_URL);
+            
+            socket.on('connect', () => {
+                statusDiv.innerText = "Conectat la serverul de semnalizare.";
+                statusDiv.style.color = "#94a3b8";
+            });
+
+            socket.on('connect_error', () => {
+                statusDiv.innerText = "Așteptare: Pornirea serverului backend local...";
+                statusDiv.style.color = "#ef4444";
+            });
+
             initSocketEvents();
         } catch (e) {
-            console.log("Serverul Socket.io nu este pornit.");
+            console.log("Eroare la încărcarea Socket.io");
         }
 
-        const roomCodeInput = document.getElementById('roomCode');
-        const startBtn = document.getElementById('startBtn');
-        const stopBtn = document.getElementById('stopBtn');
-        const statusPanel = document.getElementById('statusPanel');
-
-        let isControlling = false;
-
-        // APĂSARE BUTON START
-        startBtn.addEventListener('click', () => {
-            const currentCode = roomCodeInput.value.trim();
-            
-            if (socket && currentCode) {
-                // Intră în cameră
-                socket.emit('set-custom-code', currentCode);
-                
-                // Trimite comanda de preluare control către celălalt dispozitiv
-                socket.emit('request-control', { action: 'START_CONTROL' });
-                
-                isControlling = true;
-                startBtn.style.display = 'none';
-                stopBtn.style.display = 'block';
-                statusPanel.innerText = "Controlezi camera: " + currentCode;
-            } else {
-                alert("Introdu un cod mai întâi!");
+        // Când se introduce codul, dispozitivul este mutat în camera respectivă de pe server
+        secretCodeInput.addEventListener('input', () => {
+            const cod = secretCodeInput.value.trim();
+            if (cod && socket && socket.connected) {
+                socket.emit('join-room', cod);
+                statusDiv.innerText = "Conectat la canalul secret: " + cod;
+                statusDiv.style.color = "#10b981";
             }
         });
 
-        // APĂSARE BUTON STOP
-        stopBtn.addEventListener('click', () => {
-            if (socket) {
-                // Trimite comanda de eliberare control
-                socket.emit('request-control', { action: 'STOP_CONTROL' });
+        // Logica de apăsare pe butonul CONTROL / STOP
+        mainBtn.addEventListener('click', () => {
+            const cod = secretCodeInput.value.trim();
+            if (!cod) {
+                alert("Scrie codul secret mai întâi!");
+                return;
+            }
+
+            if (!socket || !socket.connected) {
+                alert("Verifică dacă serverul local Node.js rulează în rețea!");
+                return;
+            }
+
+            if (!amControlul) {
+                // Trimitem semnalul de START CONTROL
+                socket.emit('action-control', { room: cod, type: 'START' });
                 
-                isControlling = false;
-                startBtn.style.display = 'block';
-                stopBtn.style.display = 'none';
-                statusPanel.innerText = "Control oprit.";
+                amControlul = true;
+                mainBtn.innerText = "STOP";
+                mainBtn.className = "btn-stop";
+                statusDiv.innerText = "Controlezi celălalt gadget...";
+                statusDiv.style.color = "#f8fafc";
+            } else {
+                // Trimitem semnalul de STOP CONTROL
+                socket.emit('action-control', { room: cod, type: 'STOP' });
+                
+                amControlul = false;
+                mainBtn.innerText = "CONTROL";
+                mainBtn.className = "btn-control";
+                statusDiv.innerText = "Control oprit.";
+                statusDiv.style.color = "#94a3b8";
             }
         });
 
         function initSocketEvents() {
-            // Ascultăm comenzile de control primite de la celălalt dispozitiv
-            socket.on('trigger-action', (data) => {
-                
-                if (data.action === 'START_CONTROL') {
-                    // Celălalt dispozitiv a preluat controlul asupra acestei pagini
-                    statusPanel.innerText = "ACEST DISPOZITIV ESTE CONTROLAT DE LA DISTANȚĂ!";
+            // Ascultăm semnalele primite de la distanță de pe celălalt dispozitiv
+            socket.on('execute-control', (data) => {
+                if (data.type === 'START') {
+                    statusDiv.innerText = "ACEST GADGET ESTE CONTROLAT TOTAL DE LA DISTANȚĂ!";
+                    statusDiv.style.color = "#ef4444";
                     document.body.classList.add('controlled-mode');
-                    
-                    // AICI POȚI PROGRAMA CE SĂ FACĂ TABLETA CÂND E CONTROLATĂ:
-                    // Exemplu: Să deschidă automat un link ales de tine
-                    // window.location.href = "https://github.com"; 
+                    secretCodeInput.disabled = true;
+                    mainBtn.disabled = true; // Se blochează tot ecranul pe gadgetul controlat
                 } 
-                
-                else if (data.action === 'STOP_CONTROL') {
-                    // S-a apăsat STOP pe celălalt dispozitiv
-                    statusPanel.innerText = "Controlul a fost oprit de la distanță.";
+                else if (data.type === 'STOP') {
+                    statusDiv.innerText = "Dispozitiv eliberat din control.";
+                    statusDiv.style.color = "#94a3b8";
                     document.body.classList.remove('controlled-mode');
+                    secretCodeInput.disabled = false;
+                    mainBtn.disabled = false;
                 }
             });
         }
